@@ -1,22 +1,51 @@
 import streamlit as st
 import pandas as pd
 import pickle
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.metrics import f1_score, roc_auc_score, matthews_corrcoef
 from sklearn.metrics import confusion_matrix, classification_report
 
-st.set_page_config(page_title="Breast Cancer Classification", layout="wide")
+# Page Config
+st.set_page_config(
+    page_title="Breast Cancer ML Classification",
+    page_icon="🧬",
+    layout="wide"
+)
 
-st.title("Breast Cancer Classification Web App")
-st.write("Upload test data and evaluate different classification models.")
+# Custom Styling
+st.markdown("""
+    <style>
+        .main-title {
+            font-size: 40px;
+            font-weight: bold;
+            text-align: center;
+            color: #4B8BBE;
+        }
+        .sub-text {
+            text-align: center;
+            font-size: 18px;
+            color: gray;
+        }
+        .metric-box {
+            padding: 10px;
+            border-radius: 10px;
+            background-color: #f5f5f5;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Model Selection Dropdown
+# Header Section
+st.markdown('<p class="main-title">🧬 Breast Cancer Classification</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-text">Machine Learning Model Comparison & Evaluation</p>', unsafe_allow_html=True)
+st.write("---")
 
-model_name = st.selectbox(
-    "Select Classification Model",
+# Sidebar - Model Selection
+st.sidebar.header("⚙ Model Selection")
+
+model_name = st.sidebar.selectbox(
+    "Choose a Classification Model",
     (
         "Logistic Regression",
         "Decision Tree",
@@ -27,8 +56,7 @@ model_name = st.selectbox(
     )
 )
 
-# Load Selected Model
-
+# Model Paths
 model_paths = {
     "Logistic Regression": "model/logistic_regression.pkl",
     "Decision Tree": "model/decision_tree.pkl",
@@ -38,21 +66,21 @@ model_paths = {
     "XGBoost": "model/xgboost.pkl"
 }
 
+# Load model and scaler
 model = pickle.load(open(model_paths[model_name], "rb"))
 scaler = pickle.load(open("model/scaler.pkl", "rb"))
 
-# File Upload
-
-uploaded_file = st.file_uploader("Upload Test CSV File", type=["csv"])
+# File Upload Section
+st.subheader("📂 Upload Test Dataset (CSV)")
+uploaded_file = st.file_uploader("Upload CSV File with Features + target column", type=["csv"])
 
 if uploaded_file is not None:
-    
-    data = pd.read_csv(uploaded_file)
-    st.subheader("Uploaded Data Preview")
-    st.write(data.head())
 
-    # Check target column
-    
+    data = pd.read_csv(uploaded_file)
+
+    with st.expander("Preview Uploaded Data"):
+        st.dataframe(data.head())
+
     if "target" not in data.columns:
         st.error("CSV must contain 'target' column.")
         st.stop()
@@ -60,72 +88,52 @@ if uploaded_file is not None:
     X = data.drop("target", axis=1)
     y_true = data["target"]
 
-    # FIX: Ensure correct column order
-    
+    # Ensure correct column alignment
     expected_columns = scaler.feature_names_in_
-
-    # Check missing columns
     missing_cols = set(expected_columns) - set(X.columns)
+
     if missing_cols:
         st.error(f"Missing columns in uploaded CSV: {missing_cols}")
         st.stop()
 
-    # Reorder columns correctly
     X = X[expected_columns]
-
-    # Scaling
-    
     X_scaled = scaler.transform(X)
 
     # Predictions
-    
     y_pred = model.predict(X_scaled)
+    y_prob = model.predict_proba(X_scaled)[:, 1]
 
-    if hasattr(model, "predict_proba"):
-        y_prob = model.predict_proba(X_scaled)[:, 1]
-        auc = roc_auc_score(y_true, y_prob)
-    else:
-        y_prob = None
-        auc = "Not Available"
-
-    # Evaluation Metrics
-    
-    accuracy = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred)
-    recall = recall_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred)
-    mcc = matthews_corrcoef(y_true, y_pred)
-
-    st.subheader("Evaluation Metrics")
+    # Metrics Section
+    st.write("---")
+    st.subheader("📊 Model Evaluation Metrics")
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Accuracy", round(accuracy, 4))
-    col2.metric("Precision", round(precision, 4))
-    col3.metric("Recall", round(recall, 4))
+    col1.metric("Accuracy", round(accuracy_score(y_true, y_pred), 4))
+    col2.metric("Precision", round(precision_score(y_true, y_pred), 4))
+    col3.metric("Recall", round(recall_score(y_true, y_pred), 4))
 
-    col1.metric("F1 Score", round(f1, 4))
-    col2.metric("MCC Score", round(mcc, 4))
+    col4, col5, col6 = st.columns(3)
 
-    if y_prob is not None:
-        col3.metric("AUC Score", round(auc, 4))
-    else:
-        col3.metric("AUC Score", "N/A")
+    col4.metric("F1 Score", round(f1_score(y_true, y_pred), 4))
+    col5.metric("AUC Score", round(roc_auc_score(y_true, y_prob), 4))
+    col6.metric("MCC Score", round(matthews_corrcoef(y_true, y_pred), 4))
 
     # Confusion Matrix
-    
-    st.subheader("Confusion Matrix")
+    st.write("---")
+    st.subheader("📌 Confusion Matrix")
 
     cm = confusion_matrix(y_true, y_pred)
 
     fig, ax = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False)
+    plt.xlabel("Predicted Label")
+    plt.ylabel("Actual Label")
     st.pyplot(fig)
 
     # Classification Report
+    st.write("---")
+    st.subheader("📄 Classification Report")
 
-    st.subheader("Classification Report")
     report = classification_report(y_true, y_pred)
-    st.text(report)
+    st.code(report)
