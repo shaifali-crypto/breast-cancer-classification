@@ -14,6 +14,7 @@ st.title("Breast Cancer Classification Web App")
 st.write("Upload test data and evaluate different classification models.")
 
 # Model Selection Dropdown
+
 model_name = st.selectbox(
     "Select Classification Model",
     (
@@ -26,7 +27,8 @@ model_name = st.selectbox(
     )
 )
 
-# Load Model
+# Load Selected Model
+
 model_paths = {
     "Logistic Regression": "model/logistic_regression.pkl",
     "Decision Tree": "model/decision_tree.pkl",
@@ -40,6 +42,7 @@ model = pickle.load(open(model_paths[model_name], "rb"))
 scaler = pickle.load(open("model/scaler.pkl", "rb"))
 
 # File Upload
+
 uploaded_file = st.file_uploader("Upload Test CSV File", type=["csv"])
 
 if uploaded_file is not None:
@@ -48,6 +51,8 @@ if uploaded_file is not None:
     st.subheader("Uploaded Data Preview")
     st.write(data.head())
 
+    # Check target column
+    
     if "target" not in data.columns:
         st.error("CSV must contain 'target' column.")
         st.stop()
@@ -55,22 +60,40 @@ if uploaded_file is not None:
     X = data.drop("target", axis=1)
     y_true = data["target"]
 
+    # FIX: Ensure correct column order
+    
+    expected_columns = scaler.feature_names_in_
+
+    # Check missing columns
+    missing_cols = set(expected_columns) - set(X.columns)
+    if missing_cols:
+        st.error(f"Missing columns in uploaded CSV: {missing_cols}")
+        st.stop()
+
+    # Reorder columns correctly
+    X = X[expected_columns]
+
     # Scaling
+    
     X_scaled = scaler.transform(X)
 
     # Predictions
+    
     y_pred = model.predict(X_scaled)
-    y_prob = model.predict_proba(X_scaled)[:, 1]
 
-    # -----------------------------
+    if hasattr(model, "predict_proba"):
+        y_prob = model.predict_proba(X_scaled)[:, 1]
+        auc = roc_auc_score(y_true, y_prob)
+    else:
+        y_prob = None
+        auc = "Not Available"
+
     # Evaluation Metrics
-    # -----------------------------
-
+    
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred)
-    auc = roc_auc_score(y_true, y_prob)
     mcc = matthews_corrcoef(y_true, y_pred)
 
     st.subheader("Evaluation Metrics")
@@ -82,11 +105,15 @@ if uploaded_file is not None:
     col3.metric("Recall", round(recall, 4))
 
     col1.metric("F1 Score", round(f1, 4))
-    col2.metric("AUC Score", round(auc, 4))
-    col3.metric("MCC Score", round(mcc, 4))
+    col2.metric("MCC Score", round(mcc, 4))
+
+    if y_prob is not None:
+        col3.metric("AUC Score", round(auc, 4))
+    else:
+        col3.metric("AUC Score", "N/A")
 
     # Confusion Matrix
-
+    
     st.subheader("Confusion Matrix")
 
     cm = confusion_matrix(y_true, y_pred)
@@ -97,7 +124,7 @@ if uploaded_file is not None:
     plt.ylabel("Actual")
     st.pyplot(fig)
 
-    # Classification Report    
+    # Classification Report
 
     st.subheader("Classification Report")
     report = classification_report(y_true, y_pred)
